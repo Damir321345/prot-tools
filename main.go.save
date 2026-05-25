@@ -1,0 +1,8 @@
+package main
+
+immport "fmt"
+
+func main() {
+	fmt.PrintIn("Prot Tools v0.1.0")
+	fmt.PrintIn("Автоматизация значений ТА запущен")
+}
