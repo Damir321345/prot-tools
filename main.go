@@ -2,7 +2,9 @@ package main
 
 import (
 	"fmt"
+	"math"
 	"math/rand"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -13,11 +15,18 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
+// Точка ВАХ (ток в А, напряжение в В)
+type VACPoint struct {
+	Current float64
+	Voltage float64
+}
+
 func main() {
 	rand.Seed(time.Now().UnixNano())
 	a := app.New()
-	w := a.NewWindow("Prot Tools - Испытание ТТ")
+	w := a.NewWindow("Abd Prot Tools")
 
+	// ==================== Вкладка 1: Коэф. тр. ====================
 	entryRatio := widget.NewEntry()
 	entryRatio.SetPlaceHolder("Например: 3000/5")
 
@@ -27,82 +36,241 @@ func main() {
 	entryCurrent := widget.NewEntry()
 	entryCurrent.SetPlaceHolder("Например: 100")
 
-	resultLabel := widget.NewLabel("")
+	entryCount := widget.NewEntry()
+	entryCount.SetPlaceHolder("Например: 3")
+	entryCount.SetText("1")
+
+	var allValues string
+	resultLabel := widget.NewLabel("Нажмите «Сгенерировать»")
+	btnCopy := widget.NewButton("Копировать всё", nil)
+	btnCopy.Disable()
 
 	btnGenerate := widget.NewButton("Сгенерировать", func() {
 		ratio := entryRatio.Text
 		classStr := entryClass.Text
 		currentStr := entryCurrent.Text
+		countStr := entryCount.Text
 
-		// Разбор коэффициента
 		parts := strings.Split(ratio, "/")
 		if len(parts) != 2 {
-			resultLabel.SetText("Неверный формат коэффициента!")
 			return
 		}
 		primNom, err1 := strconv.ParseFloat(parts[0], 64)
 		secNom, err2 := strconv.ParseFloat(parts[1], 64)
 		if err1 != nil || err2 != nil {
-			resultLabel.SetText("Введите числа в коэффициент!")
 			return
 		}
 
-		// Разбор класса точности
 		class, err3 := strconv.ParseFloat(classStr, 64)
 		if err3 != nil || class <= 0 {
-			resultLabel.SetText("Неверный класс точности!")
 			return
 		}
 
-		// Разбор базового тока
 		baseCurrent, err4 := strconv.ParseFloat(currentStr, 64)
 		if err4 != nil || baseCurrent <= 0 {
-			resultLabel.SetText("Неверный ток!")
 			return
 		}
 
-		// Коэффициент трансформации
+		count, err5 := strconv.Atoi(countStr)
+		if err5 != nil || count <= 0 {
+			count = 1
+		}
+		if count > 20 {
+			count = 20
+		}
+
 		ratioVal := primNom / secNom
+		ratioStr := fmt.Sprintf("%.0f", ratioVal)
 
-		// Случайный ток в диапазоне ±5% от заданного
-		currentDev := (rand.Float64()*2 - 1) * 5.0
-		appliedCurrent := baseCurrent * (1 + currentDev/100.0)
-
-		// Идеальный вторичный ток
-		idealSecondary := appliedCurrent / ratioVal
-
-		// Погрешность: от 0.2% до класса точности, но не выше 0.45%
 		minDev := 0.2
 		maxDev := class
-		if maxDev > 0.45 {
-			maxDev = 0.45
+		if maxDev < minDev {
+			maxDev = minDev
 		}
-		dev := minDev + rand.Float64()*(maxDev-minDev)
-		secondary := idealSecondary * (1 - dev/100.0)
 
-		// Фактическая погрешность
-		actualDev := ((idealSecondary - secondary) / idealSecondary) * 100
+		var preview strings.Builder
+		preview.WriteString("I перв (A)  |  I втор (A)  |  Коэфф\n")
+		preview.WriteString("-----------------------------------\n")
 
-		resultLabel.SetText(fmt.Sprintf(
-			"Паспорт: %s (коэфф: %.0f)\n"+
-				"Класс точности: %s\n"+
-				"Подано на первичную: %.2f A\n"+
-				"Измерено на вторичной: %.4f A\n"+
-				"Погрешность: %.4f %%",
-			ratio, ratioVal, classStr, appliedCurrent, secondary, actualDev,
-		))
+		firstCurrentDev := (rand.Float64()*2 - 1) * 5.0
+		firstApplied := baseCurrent * (1 + firstCurrentDev/100.0)
+		firstDev := minDev + rand.Float64()*(maxDev-minDev)
+		firstSecondary := (firstApplied / ratioVal) * (1 - firstDev/100.0)
+
+		firstPrimaryStr := fmt.Sprintf("%.2f", firstApplied)
+		firstSecondaryStr := fmt.Sprintf("%.4f", firstSecondary)
+
+		preview.WriteString(fmt.Sprintf("%-10s  |  %-10s  |  %s\n", firstPrimaryStr, firstSecondaryStr, ratioStr))
+
+		var valuesBuilder strings.Builder
+		valuesBuilder.WriteString(firstPrimaryStr + "\t" + firstSecondaryStr + "\t" + ratioStr)
+
+		for i := 1; i < count; i++ {
+			currentDev := (rand.Float64()*2 - 1) * 5.0
+			appliedCurrent := baseCurrent * (1 + currentDev/100.0)
+			idealSecondary := appliedCurrent / ratioVal
+
+			dev := minDev + rand.Float64()*(maxDev-minDev)
+			secondary := idealSecondary * (1 - dev/100.0)
+
+			primaryStr := fmt.Sprintf("%.2f", appliedCurrent)
+			secondaryStr := fmt.Sprintf("%.4f", secondary)
+
+			preview.WriteString(fmt.Sprintf("%-10s  |  %-10s  |  %s\n", primaryStr, secondaryStr, ratioStr))
+			valuesBuilder.WriteString("\n" + primaryStr + "\t" + secondaryStr + "\t" + ratioStr)
+		}
+
+		allValues = valuesBuilder.String()
+		resultLabel.SetText(preview.String())
+		btnCopy.Enable()
 	})
 
-	w.SetContent(container.NewVBox(
-		widget.NewLabel("Паспортный коэффициент трансформации:"),
-		entryRatio,
-		widget.NewLabel("Класс точности (верхняя граница, максимум 0.45%):"),
-		entryClass,
-		widget.NewLabel("Базовый ток (A), диапазон ±5%:"),
-		entryCurrent,
-		btnGenerate,
-		resultLabel,
-	))
-	w.Resize(fyne.NewSize(450, 400))
+	btnCopy.OnTapped = func() {
+		w.Clipboard().SetContent(allValues)
+		btnCopy.SetText("Скопировано ✓")
+		go func() {
+			time.Sleep(1 * time.Second)
+			btnCopy.SetText("Копировать всё")
+		}()
+	}
+
+	ttTab := container.NewBorder(
+		container.NewVBox(
+			widget.NewLabel("Паспортный коэффициент:"),
+			entryRatio,
+			widget.NewLabel("Класс точности (%):"),
+			entryClass,
+			widget.NewLabel("Базовый ток (A):"),
+			entryCurrent,
+			widget.NewLabel("Количество точек:"),
+			entryCount,
+			btnGenerate,
+			widget.NewSeparator(),
+			btnCopy,
+		),
+		nil, nil, nil,
+		container.NewScroll(resultLabel),
+	)
+
+	// ==================== Вкладка 2: ВАХ ====================
+	vacEntry := widget.NewMultiLineEntry()
+	vacEntry.SetPlaceHolder(`Вставьте таблицу из Word.
+Первая строка — заголовок (пропускается).
+Данные: Напряжение (В) и Ток (А) через табуляцию.
+Пример:
+Напряжение (В)	Ток (А)
+0,166	0,00765
+0,289	0,00928`)
+
+	vacResultLabel := widget.NewLabel("")
+	vacBtnCopy := widget.NewButton("Копировать напряжения", nil)
+	vacBtnCopy.Disable()
+	var vacResultValues string
+
+	vacBtnCalc := widget.NewButton("Рассчитать", func() {
+		text := vacEntry.Text
+		lines := strings.Split(text, "\n")
+		var points []VACPoint
+
+		for i, line := range lines {
+			line = strings.TrimSpace(line)
+			if line == "" {
+				continue
+			}
+			line = strings.Replace(line, ",", ".", -1)
+			fields := strings.Fields(line)
+			if len(fields) < 2 {
+				continue
+			}
+			voltage, err1 := strconv.ParseFloat(fields[0], 64)
+			current, err2 := strconv.ParseFloat(fields[1], 64)
+			if err1 != nil || err2 != nil {
+				if i > 0 {
+					fmt.Println("Пропущена строка:", line, "ошибки:", err1, err2)
+				}
+				continue
+			}
+			points = append(points, VACPoint{Current: current, Voltage: voltage})
+		}
+
+		if len(points) < 2 {
+			vacResultLabel.SetText(fmt.Sprintf("Нужно минимум 2 точки! Распознано: %d", len(points)))
+			return
+		}
+
+		sort.Slice(points, func(i, j int) bool {
+			return points[i].Current < points[j].Current
+		})
+
+		targetCurrents := []float64{0.1, 0.25, 0.5, 1.0}
+		var result strings.Builder
+		result.WriteString("Результаты:\n")
+		result.WriteString("Ток (A)  |  Напряжение (V)\n")
+		result.WriteString("------------------------\n")
+
+		var valuesForCopy []string
+
+		for _, targetI := range targetCurrents {
+			voltage := interpolate(points, targetI)
+			if math.IsNaN(voltage) {
+				result.WriteString(fmt.Sprintf("%.2f     |  — (вне диапазона)\n", targetI))
+				valuesForCopy = append(valuesForCopy, "—")
+			} else {
+				result.WriteString(fmt.Sprintf("%.2f     |  %.2f\n", targetI, voltage))
+				valuesForCopy = append(valuesForCopy, fmt.Sprintf("%.2f", voltage))
+			}
+		}
+
+		vacResultValues = strings.Join(valuesForCopy, "\t")
+		vacResultLabel.SetText(result.String())
+		vacBtnCopy.Enable()
+	})
+
+	vacBtnCopy.OnTapped = func() {
+		w.Clipboard().SetContent(vacResultValues)
+		vacBtnCopy.SetText("Скопировано ✓")
+		go func() {
+			time.Sleep(1 * time.Second)
+			vacBtnCopy.SetText("Копировать напряжения")
+		}()
+	}
+
+	vacTab := container.NewBorder(
+		container.NewVBox(
+			widget.NewLabel("Вставьте таблицу ВАХ (Напряжение [В] и Ток [А]):"),
+			vacEntry,
+			vacBtnCalc,
+			widget.NewSeparator(),
+			vacBtnCopy,
+		),
+		nil, nil, nil,
+		container.NewScroll(vacResultLabel),
+	)
+
+	// ==================== Вкладки ====================
+	tabs := container.NewAppTabs(
+		container.NewTabItem("Коэф. тр.", ttTab),
+		container.NewTabItem("ВАХ", vacTab),
+	)
+
+	w.SetContent(tabs)
+	w.Resize(fyne.NewSize(600, 600))
 	w.ShowAndRun()
+}
+
+// Линейная интерполяция напряжения для заданного тока
+func interpolate(points []VACPoint, targetI float64) float64 {
+	if targetI < points[0].Current || targetI > points[len(points)-1].Current {
+		return math.NaN()
+	}
+
+	for i := 0; i < len(points)-1; i++ {
+		if targetI >= points[i].Current && targetI <= points[i+1].Current {
+			u1, i1 := points[i].Voltage, points[i].Current
+			u2, i2 := points[i+1].Voltage, points[i+1].Current
+			return u1 + (u2-u1)*(targetI-i1)/(i2-i1)
+		}
+	}
+
+	return math.NaN()
 }
