@@ -15,7 +15,6 @@ import (
 	"fyne.io/fyne/v2/widget"
 )
 
-// Точка ВАХ (ток в А, напряжение в В)
 type VACPoint struct {
 	Current float64
 	Voltage float64
@@ -24,7 +23,7 @@ type VACPoint struct {
 func main() {
 	rand.Seed(time.Now().UnixNano())
 	a := app.New()
-	w := a.NewWindow("Abd Prot Tools")
+	w := a.NewWindow("Prot Tools")
 
 	// ==================== Вкладка 1: Коэф. тр. ====================
 	entryRatio := widget.NewEntry()
@@ -103,7 +102,11 @@ func main() {
 		preview.WriteString(fmt.Sprintf("%-10s  |  %-10s  |  %s\n", firstPrimaryStr, firstSecondaryStr, ratioStr))
 
 		var valuesBuilder strings.Builder
-		valuesBuilder.WriteString(firstPrimaryStr + "\t" + firstSecondaryStr + "\t" + ratioStr)
+		valuesBuilder.WriteString(firstPrimaryStr)
+		valuesBuilder.WriteString("\t")
+		valuesBuilder.WriteString(firstSecondaryStr)
+		valuesBuilder.WriteString("\t")
+		valuesBuilder.WriteString(ratioStr)
 
 		for i := 1; i < count; i++ {
 			currentDev := (rand.Float64()*2 - 1) * 5.0
@@ -117,7 +120,12 @@ func main() {
 			secondaryStr := fmt.Sprintf("%.4f", secondary)
 
 			preview.WriteString(fmt.Sprintf("%-10s  |  %-10s  |  %s\n", primaryStr, secondaryStr, ratioStr))
-			valuesBuilder.WriteString("\n" + primaryStr + "\t" + secondaryStr + "\t" + ratioStr)
+			valuesBuilder.WriteString("\n")
+			valuesBuilder.WriteString(primaryStr)
+			valuesBuilder.WriteString("\t")
+			valuesBuilder.WriteString(secondaryStr)
+			valuesBuilder.WriteString("\t")
+			valuesBuilder.WriteString(ratioStr)
 		}
 
 		allValues = valuesBuilder.String()
@@ -156,11 +164,7 @@ func main() {
 	vacEntry := widget.NewMultiLineEntry()
 	vacEntry.SetPlaceHolder(`Вставьте таблицу из Word.
 Первая строка — заголовок (пропускается).
-Данные: Напряжение (В) и Ток (А) через табуляцию.
-Пример:
-Напряжение (В)	Ток (А)
-0,166	0,00765
-0,289	0,00928`)
+Данные: Напряжение (В) и Ток (А) через табуляцию.`)
 
 	vacResultLabel := widget.NewLabel("")
 	vacBtnCopy := widget.NewButton("Копировать напряжения", nil)
@@ -186,7 +190,7 @@ func main() {
 			current, err2 := strconv.ParseFloat(fields[1], 64)
 			if err1 != nil || err2 != nil {
 				if i > 0 {
-					fmt.Println("Пропущена строка:", line, "ошибки:", err1, err2)
+					fmt.Println("Пропущена строка:", line)
 				}
 				continue
 			}
@@ -247,10 +251,28 @@ func main() {
 		container.NewScroll(vacResultLabel),
 	)
 
+	// ==================== Вкладка 3: О программе ====================
+	aboutTab := container.NewVBox(
+		widget.NewLabel(""),
+		widget.NewLabel("Prot Tools v1.0"),
+		widget.NewLabel(""),
+		widget.NewLabel("Обновления:"),
+		widget.NewLabel(""),
+
+		&widget.Button{
+			Text:       "🌐 prot-tools.website.yandexcloud.net",
+			Importance: widget.LowImportance,
+			OnTapped: func() {
+				w.Clipboard().SetContent("prot-tools.website.yandexcloud.net")
+			},
+		},
+	)
+
 	// ==================== Вкладки ====================
 	tabs := container.NewAppTabs(
 		container.NewTabItem("Коэф. тр.", ttTab),
 		container.NewTabItem("ВАХ", vacTab),
+		container.NewTabItem("О программе", aboutTab),
 	)
 
 	w.SetContent(tabs)
@@ -258,7 +280,6 @@ func main() {
 	w.ShowAndRun()
 }
 
-// Линейная интерполяция напряжения для заданного тока
 func interpolate(points []VACPoint, targetI float64) float64 {
 	if targetI < points[0].Current || targetI > points[len(points)-1].Current {
 		return math.NaN()
