@@ -220,8 +220,8 @@ func main() {
 				result.WriteString(fmt.Sprintf("%.2f     |  — (вне диапазона)\n", targetI))
 				valuesForCopy = append(valuesForCopy, "—")
 			} else {
-				result.WriteString(fmt.Sprintf("%.2f     |  %.2f\n", targetI, voltage))
-				valuesForCopy = append(valuesForCopy, fmt.Sprintf("%.2f", voltage))
+				result.WriteString(fmt.Sprintf("%.2f     |  %.3f\n", targetI, voltage))
+				valuesForCopy = append(valuesForCopy, fmt.Sprintf("%.3f", voltage))
 			}
 		}
 
